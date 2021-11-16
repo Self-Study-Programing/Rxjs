@@ -326,3 +326,183 @@ interval(700)
 ### RxJS 5와 6의 연산자 차이
 
 RxJS 5의 공식 문서에서는 옵저버블을 생성해서 출발점이 될 수 있는 정적 연산자와 생성된 옵저버블 인스턴스에서 호출할 수 있는 인스턴스 연산자를 나누었다. RxJS 6에서는 이런 개념이 사라졌다. 따라서 정적 연산자처럼 옵저버블을 생성하는 함수를 정의해야 한다.
+
+### 파이퍼블 연산자
+
+파이퍼블 연산자는 생성 함수로 만들어진 옵저버블 인스턴스를 pipe 함수 안에서 다룰 수 있는 연산자다. <옵저버블 인스턴스>.pipe(연산자1(), 연산자2(), ...) 형태로 연산자를 연결해서 호출할 수 있다. 이렇게 연결한 파이퍼블 연산자는 각 연산자를 거치며 새로운 옵저버블 인스턴스를 리턴한다. pipe 함수 호출 후 리턴하는 결과도 각 연산자로 감싼 새로운 옵저버블 인스턴스다.
+
+따라서 '<옵저버블 인스턴스>.(연산자1(), 연산자2())'처럼 사용해도 되지만 pipe 함수를 연결해서 사용해도 동일하게 동작한다.
+
+```js
+const { range } = require("rxjs");
+const { filter, map } = require("rxjs/operators");
+
+range(1, 10).pipe(
+  filter(function (value) {
+    return value % divisor == 0;
+  }),
+  map(function (value) {
+    return value + 1;
+  })
+);
+```
+
+### 배열과 비교해 본 옵저버블 연산자 예제
+
+옵저버블 객체는 여러 값을 다룰 수 있는 함수형 연산자를 제공한다. Array#extras나 로다시에서 여러 값을 처리하는 데 제공하는 함수형 프로그래밍의 연산자와 비슷하다.
+
+```js
+const { Observable } = require("rxjs");
+const { map } = require("rxjs/operators");
+
+const observableCreated$ = Observable.create(function (observer) {
+  observer.next(1);
+  observer.next(2);
+  observer.complete();
+});
+
+observableCreated$
+  .pipe(
+    map(function (value) {
+      return value * 2;
+    })
+  )
+  .subscribe(function next(item) {
+    console.log(item);
+  });
+```
+
+실행 결과
+
+    2
+    4
+
+```js
+const { Observable } = require("rxjs");
+const { map, toArray } = require("rxjs/operators");
+
+const observableCreated$ = Observable.create(function (observer) {
+  console.log("Observable BEGIN");
+  const arr = [1, 2];
+  for (let i = 0; i < arr.length; i++) {
+    console.log(`current array: arr[${i}]`);
+    observer.next(arr[i]);
+  }
+  console.log("BEFORE complete");
+  observer.complete();
+  console.log("observable END");
+});
+
+function logAndGet(origimal, value) {
+  console.log(`original: ${original}, map value: ${value}`);
+  return value;
+}
+
+observableCreated$
+  .pipe(
+    map(function (value) {
+      return logAndGet(value, value * 2);
+    }),
+    map(function (value) {
+      return logAndGet(value, value + 1);
+    }),
+    map(function (value) {
+      return logAndGet(value, value * 3);
+    }),
+    toArray()
+  )
+  .subscribe(function (arr) {
+    console.log(arr);
+  });
+```
+
+<img src="./img/observable.png" width="30%" />
+
+map 연산자로 값을 감쌀 때마다 새로운 옵저버블 객체만 생성한다. 새로 생성한 옵저버블은 구독할 때까지 실행되지 않으므로 배열이 생성될 때처럼 실제 연산자가 동작하지 않는다.
+
+### 순수 함수와 연산자의 관계
+
+함수의 부수 효과는 외부 참조뿐만 아니라 함수 안에서 입출력 동작으로 가져온 값을 이용하는 것처럼 외부의 영향을 받아 결과가 달라진다면 나타날 수 있다. 심지어 결과에 영향을 주지 않더라도 함수의 역할과 상관없는 모든 동작을 부수 효과라고 보는 시각도 있다.
+
+이럴 때 순수 함수를 잘 사용하면 장점이 있다. 하지만 현식적으로 소프트우ㅐ어를 개발할 때 입출력과 같은 부수 효과 없이 프로그래밍하기 어려우므로 순수 함수로만 개발할 수는 없다. RxJS에서 연산자는 컬렉션을 다루는 함수형 프로그래밍 스타일의 순수 함수다. 따라서 순수 함수로 소개된 RxJS의 연산자를 다룰 때는 연산자에게 사용하는 함수도 순수 함수로 하여 함수형 프로그래밍의 장점을 살리되 부수효과가 일어나는 지점을 잘 지정해 부수 효과의 순서를 잘 관리한다면 좀 더 효율적인 프로그래밍을 할 수 있다.
+
+RxJS에서 연산자를 순수 함수로 소개한 이유는 해당 연산자가 호출된 옵저버블 객체만 입력으로 삼아 새로운 옵저버블을 만들어 다른 외부 요소의 영향을 받지 않기 때문이다. map 연산자도 기존 배열에서 다른 외부 변수를 참조하지 않고 새로운 배열을 만든다. 옵저버블의 연산자도 기존 옵저버블 외에 다른 영향 없이 새로운 옵저버블을 생성한다.
+
+하지만 배열이나 옵저버블 모두 map 연산자에 순수 함수를 인자로 사용하지 않으면 어떨게 될까? 연산자에게 사용하는 함수가 외부 변수를 참조하고 해당 변숫값이 예측할 수 없도록 바뀐다. 결과도 매번 달라질 수 있어 예측이 어렵다. map 연산자 자체가 순수 함수여도 그 안에서 호출하는 함수가 순수 함수가 아니므로 순수 함수의 정점을 살릴 수 없는 것이다.
+
+## 스케줄러
+
+스케줄러는 옵저버가 옵저버블을 구독할 때 어떤 순서로 어떻게 실행할지 실행 컨텍스트를 관리하는 역할의 자료구조다.
+
+스케줄러도 rxjs에서 불러올 수 있다. 단일 스레드인 자바스크립트에서는 비동기 방식으로 setTimeout, setInterval 함수 또는 마이크로 큐를 이용해 실행하는 asappScheduler, asyncScheduler가 있다. 동기 방식으로는 트램폴린 방식으로 큐를 사용하는 queueScheduler가 있다. queueScheduler는 재귀 방식으로 구혆했다면 콜 스택을 사용하지 않고 큐를 이용해 반복적으로 해제 하는 방식을 지원한다. 따라서 재귀 호출에서 발생할 수 있는 스택 오버플로를 방지할 수 있다.
+
+## 마블 다이어그램
+
+ReactiveX 공식 문서에는 옵저버블의 연산자를 설명하는 마블 다이어그램이라는 그림을 제공한다. 마블다이어 그램은 연산자를 쉽게 이해하는 데 도움이 주고, 개발자가 생각하는 흐름을 그림으로 도식화하는 데 유용하다.
+
+## 프로미스와 함께 본 옵저버 콜백 및 에러 처리
+
+옵저버블의 개념을 생각하고 프로미스를 떠올린 자바스크립트 개발자도 있을 것이라 생각한다. 프로미스도 then이라는 함수를 사용하면 RxJS의 map 연산자처럼 함수를 사용해 변환할 수 있다. 또한 프로미스는 값이나 에러를 콜백 함수에 전달할 수 있다. 프로미스에 익숙한 자바스크립트 개발자가 RxJS 에러 처리 방식을 이해할 수 있도록 프로미스와 RxJS의 에러 처리 방식을 보자.
+
+```js
+// 정상적인 프로미스의 값 처리
+const promise = new Promise(function (resolve, reject) {
+  resolve(1);
+});
+promise.then(function (value) {
+  console.log(value);
+});
+```
+
+프로미스 생성자에서 사용하는 함수에 resolve의 1이라는 값을 인자로 설정하는 방식으로 값 1을 전달할 수 있다.
+
+```js
+// 프로미스의 에러 처리
+const promise = new Promise(function (resolve, reject) {
+  reject(new Error("error"));
+});
+promise.then(
+  function (value) {
+    console.log(value);
+  },
+  function (error) {
+    console.log(error);
+  }
+);
+```
+
+rxjs는 옵저버블에서 여러 개 값을 취급한다. 따라서 옵저버에 있는 프로미스에서 resolve 함수로 값을 전달하듯 next 함수로 값을 전달할 수 있고, 프로미스의 reject 함수처럼 옵저버에 있는 error 함수로 에러를 전달할 수 있다. 에러를 전달하면 해당 옵저버블은 구독을 종료한다. 에러 없이 실행되면 complete 함수를 호출해 구독을 종료한다.
+
+```js
+const { Observable } = require("rxjs");
+
+const observableCreated$ = Observable.create(function (observer) {
+  try {
+    observer.next(1);
+    observer.next(2);
+    throw "throw err test";
+  } catch (err) {
+    observer.error(err);
+  } finally {
+    observer.complete();
+  }
+});
+
+observableCreated$.subscribe(
+  function next(item) {
+    console.log(item);
+  },
+  function error(err) {
+    console.log("error: " + err);
+  },
+  function complete() {
+    console.log("complete");
+  }
+);
+```
+
+옵저버블은 옵저버로 값 1과 2를 전달한 후 에러를 발생시키고 catch문을 이용해 옵저버에 있는 error 함수로 에러를 전달한다. 만약 에러가 발생하지 않았다면 complete 함수로 완료됨을 알 수 있다. 에러가 나서 finally 안의 코드가 실행되면 complete 함수는 호출된다. 하지만 이미 error 함수를 호출했으면 해당 옵저버블의 구독이 종료되었으므로 따로 complete 함수에 해당하는 콜백을 호출하지는 않는다.
+
+- next: 다음에 전달할 값 또는 이벤트를 발행한다.
+- error: 에러나 예외가 발생하면 이를 전달받는다. 구독 종료
+- complete: 정상적으로 옵저버블 구독을 완료하면 호출한다. 구독 종료
